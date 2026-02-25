@@ -32,6 +32,22 @@ from webdriver_manager.chrome import ChromeDriverManager
 from bs4 import BeautifulSoup
 
 from config import CONFIG
+import os as _os, json as _json
+
+_runtime = {}
+if _os.path.exists("runtime_config.json"):
+    with open("runtime_config.json") as _f:
+        _runtime = _json.load(_f)
+
+# Override CONFIG values if api.py passed a runtime config
+if _runtime:
+    CONFIG['location']             = _runtime.get('location',             CONFIG['location'])
+    CONFIG['results_per_keyword']  = _runtime.get('results_per_keyword',  CONFIG['results_per_keyword'])
+    CONFIG['require_amazon']       = _runtime.get('require_amazon',       CONFIG['require_amazon'])
+    CONFIG['require_marketplace']  = _runtime.get('require_marketplace',  CONFIG['require_marketplace'])
+    CONFIG['headless']             = _runtime.get('headless',             CONFIG['headless'])
+
+# ── END OF PATCH ─────
 from save_results import save_to_csv, save_to_json, generate_summary
 
 # ---------------------------------------------------------------------------
@@ -428,7 +444,7 @@ class IndeedScraper:
     def run(self):
         self._setup_driver()
 
-        broad_searches = self.kw_data.get('broad_searches', [])
+        broad_searches = _runtime.get('keywords') or self.kw_data.get('broad_searches', [])
         logger.info(f"\n🚀 Starting scraper — {len(broad_searches)} broad search queries")
         logger.info(f"   require_amazon={CONFIG['require_amazon']}  require_marketplace={CONFIG['require_marketplace']}")
         logger.info(f"   results_per_query={CONFIG['results_per_keyword']}  headless={CONFIG['headless']}\n")

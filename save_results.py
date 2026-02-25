@@ -7,7 +7,7 @@ import pandas as pd
 from datetime import datetime
 from config import CONFIG
 
-
+ 
 def _timestamp() -> str:
     return datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
