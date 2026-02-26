@@ -78,6 +78,23 @@ def contains_any(text: str, terms: list) -> bool:
 
 
 # ---------------------------------------------------------------------------
+# Company Blacklist — jobs from these companies will be rejected
+# Add or remove companies here as needed
+# ---------------------------------------------------------------------------
+BLACKLISTED_COMPANIES = [
+    "amazon", "walmart", "fedex", "ups", "target", "costco",
+    "home depot", "kroger", "walgreens", "cvs", "best buy",
+    "apple", "google", "microsoft", "meta", "netflix", "tesla",
+    "nike", "adidas", "starbucks", "mcdonalds", "coca-cola",
+    "pepsi", "johnson & johnson", "procter & gamble", "unilever",
+    "ebay", "alibaba", "jd.com", "rakuten", "wayfair", "chewy",
+    "etsy", "wish", "temu", "shein", "samsung", "sony", "lg",
+    "deloitte", "accenture", "pwc", "kpmg", "ernst & young",
+    "capgemini", "infosys", "tcs", "wipro", "cognizant",
+]
+
+
+# ---------------------------------------------------------------------------
 # Main Scraper Class
 # ---------------------------------------------------------------------------
 
@@ -164,7 +181,7 @@ class IndeedScraper:
             except TimeoutException:
                 logger.warning(f"Timeout on attempt {attempt}/{CONFIG['max_retries']} for {url}")
                 if attempt < CONFIG['max_retries']:
-                    time.sleep(3 * attempt)   # back-off
+                    time.sleep(3 * attempt)
             except WebDriverException as e:
                 logger.warning(f"WebDriver error on attempt {attempt}: {e}")
                 if attempt < CONFIG['max_retries']:
@@ -176,12 +193,21 @@ class IndeedScraper:
     # Relevance filter
     # ------------------------------------------------------------------
 
-    def _is_relevant(self, title: str, description: str) -> bool:
+    def _is_relevant(self, title: str, description: str, company: str = "") -> bool:
         """
-        Return True if the job passes the relevance requirements:
+        Return True if the job passes ALL relevance requirements:
+          - Company is NOT in the blacklist
           - (optional) "amazon" in title or description
           - (optional) at least one marketplace-related term present
         """
+
+        # ── 1. Company blacklist check ─────────────────────────────────────
+        company_lower = company.lower().strip()
+        if any(blocked in company_lower for blocked in BLACKLISTED_COMPANIES):
+            logger.debug(f"  BLACKLISTED COMPANY: {company}")
+            return False
+
+        # ── 2. Amazon relevance check ──────────────────────────────────────
         combined = (title + " " + description).lower()
 
         if CONFIG.get('require_amazon', True):
@@ -189,6 +215,7 @@ class IndeedScraper:
             if not contains_any(combined, amazon_terms):
                 return False
 
+        # ── 3. Marketplace relevance check ─────────────────────────────────
         if CONFIG.get('require_marketplace', True):
             mkt_terms = self.kw_data.get('relevance_filters', {}).get('marketplace_terms', [])
             if mkt_terms and not contains_any(combined, mkt_terms):
@@ -403,15 +430,22 @@ class IndeedScraper:
                 if not job:
                     continue
 
+                # ── Early company blacklist check BEFORE fetching description ──
+                # This saves time by not opening blacklisted company pages at all
+                if any(blocked in job.get('company', '').lower() for blocked in BLACKLISTED_COMPANIES):
+                    logger.debug(f"  BLACKLISTED (skipped fetch): {job['company']}")
+                    self.rejected.append(job)
+                    continue
+
                 # Fetch full description
                 if CONFIG.get('save_full_description', True):
                     full_desc = self._fetch_full_description(job['url'])
                     if full_desc:
                         job['description'] = full_desc
 
-                # ---- Relevance filter ----
-                if not self._is_relevant(job['title'], job['description']):
-                    logger.debug(f"  REJECTED: {job['title']}")
+                # ---- Relevance filter (includes company check) ----
+                if not self._is_relevant(job['title'], job['description'], job.get('company', '')):
+                    logger.debug(f"  REJECTED: {job['title']} @ {job.get('company', '')}")
                     job['search_query'] = query
                     self.rejected.append(job)
                     continue
