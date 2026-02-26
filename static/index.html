@@ -999,8 +999,12 @@
         let activeCategory = 'All';
 
         // ─── API Config ───────────────────────────────────────
-        // CHANGE THIS to your backend URL when deployed
-        const API_BASE = 'http://localhost:8000';
+        // Use relative URL so it works no matter what port/host the server runs on.
+        // If you open the HTML directly as a file (not via the server), change this
+        // to 'http://localhost:8000' so it can reach the FastAPI backend.
+        const API_BASE = window.location.origin.startsWith('http') && !window.location.protocol.startsWith('file')
+            ? window.location.origin   // served via uvicorn → use same origin
+            : 'http://localhost:8000'; // opened as a local file
 
         // ─── Tag Input ───────────────────────────────────────
         function renderTags() {
@@ -1107,15 +1111,28 @@
 
             } catch (err) {
                 // ── DEMO MODE when backend not connected ──
-                if (err.message.includes('fetch') || err.message.includes('Failed') || err.message.includes('NetworkError') || err.message.includes('connect')) {
+                // Covers: Chrome "Failed to fetch", Firefox "NetworkError",
+                // Safari "Load failed", and generic connection-refused errors.
+                const isNetworkError = (
+                    err instanceof TypeError ||
+                    err.message.toLowerCase().includes('fetch') ||
+                    err.message.toLowerCase().includes('network') ||
+                    err.message.toLowerCase().includes('failed to') ||
+                    err.message.toLowerCase().includes('connect') ||
+                    err.message.toLowerCase().includes('load failed')
+                );
+
+                if (isNetworkError) {
                     allJobs = generateDemoJobs(tags, document.getElementById('location').value);
                     displayResults(allJobs);
-                    showInfo('⚠️ Backend not connected — showing demo data. Connect your api.py server at ' + API_BASE);
+                    showInfo('⚠️ Backend not connected — showing demo data. Start your api.py server and try again.');
                 } else {
-                    showError('Error: ' + err.message);
+                    // Real server error (4xx / 5xx)
+                    document.getElementById('resultsSection').style.display = 'none';
                     document.getElementById('emptyState').style.display = 'block';
                     document.getElementById('emptyState').querySelector('h3').textContent = 'Scrape failed';
                     document.getElementById('emptyState').querySelector('p').textContent = err.message;
+                    showError('Error: ' + err.message);
                 }
             } finally {
                 clearInterval(interval);
@@ -1243,12 +1260,17 @@
         // ─── Helpers ──────────────────────────────────────────
         function showError(msg) {
             const bar = document.getElementById('errorBar');
+            // Reset to default red-error styles in case showInfo changed them
+            bar.style.background = '';
+            bar.style.borderColor = '';
+            bar.style.color = '';
             bar.textContent = msg;
             bar.classList.add('visible');
         }
 
         function showInfo(msg) {
             const bar = document.getElementById('errorBar');
+            // Explicitly set warning (yellow) styles
             bar.style.background = 'rgba(251,191,36,0.08)';
             bar.style.borderColor = 'rgba(251,191,36,0.25)';
             bar.style.color = 'var(--warn)';
